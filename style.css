@@ -140,6 +140,30 @@ input:not([type=checkbox]),select,textarea{padding:9px 12px;border-radius:6px;bo
 .shot{flex:0 0 auto;width:min(420px,80vw);aspect-ratio:16/9;border:1px solid var(--line2);border-radius:10px;background:#000;object-fit:cover}
 input[type=file]{padding:7px;width:100%}
 
+/* página do jogo, no modelo de loja */
+.store-title{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.pill.static{position:static}
+.store-top{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:16px;align-items:start;padding:14px;border:1px solid var(--line2);border-radius:10px;background:linear-gradient(135deg,#0d2a52,#081b36)}
+.player{display:flex;flex-direction:column;gap:10px;min-width:0}
+.player-main{position:relative;aspect-ratio:16/9;max-width:100%;overflow:hidden;border-radius:6px;background:#000}
+.player-main video,.player-main iframe,.player-main img{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:contain;background:#000}
+.player-art{display:grid;place-items:center;width:100%;height:100%;font-family:var(--f-display);font-weight:800;font-size:clamp(40px,9vw,120px);color:rgba(255,255,255,.8);
+  background:linear-gradient(135deg,hsl(var(--h) 62% 44%),hsl(calc(var(--h) + 50) 66% 22%))}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.thumb{position:relative;flex:0 0 auto;width:118px;aspect-ratio:16/9;padding:0;overflow:hidden;border:2px solid transparent;border-radius:4px;background:#000;opacity:.75}
+.thumb.on,.thumb:hover{border-color:#e6efff;opacity:1}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-play{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.35);color:#fff}
+.thumb-play svg{width:22px;height:22px}
+.store-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.capsule{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;font-size:54px}
+.side-info{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:13px}
+.side-info dt{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:11px;padding-top:2px}
+.side-info dd{margin:0;font-weight:600}
+.playbox{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding:16px 18px;border:1px solid #5d86bd;border-radius:10px;background:linear-gradient(90deg,#1d4a85,#0d2a52)}
+.playbox h2{font-size:20px}
+@media (max-width:900px){ .store-top{grid-template-columns:minmax(0,1fr)} }
+
 /* capas pequenas */
 .cover{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:8px;color:#fff;font-family:var(--f-display);font-weight:800;font-size:15px;
   background:linear-gradient(135deg,hsl(var(--h) 62% 46%),hsl(calc(var(--h) + 50) 66% 28%))}

@@ -325,32 +325,61 @@ function viewMercado(){
     <p class="muted">Depende de parceria com cada estúdio. Entra depois que o launcher tiver jogadores.</p>
   </div>`;
 }
+let mediaIdx = 0;
+function mediaList(g){
+  const list = [], arq = mediaUrl(g.videoFile), vid = ytId(g.video), capa = mediaUrl(g.cover);
+  if(arq) list.push({t:'video', src:arq, thumb:capa});
+  if(vid) list.push({t:'yt', id:vid, thumb:'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg'});
+  [g.cover].concat(g.images).map(mediaUrl).filter(Boolean).forEach(u => list.push({t:'img', src:u, thumb:u}));
+  return list;
+}
 function viewJogo(){
   const g = G[state.page]; if(!g) return viewCatalogo();
-  const open = state.sessions.filter(s => s.game === g.id).length, rk = rank[g.dbId], mine = myRatings[g.id], rv = reviews[g.id];
+  const open = state.sessions.some(s => s.game === g.id), rk = rank[g.dbId], mine = myRatings[g.id], rv = reviews[g.id], fav = state.favs.includes(g.id);
   const tbd = '<span class="muted">A informar pelo estúdio</span>';
-  return `<div class="wrap">
+  const media = mediaList(g), i = Math.min(mediaIdx, Math.max(0, media.length - 1)), m = media[i];
+  const main = !m ? `<div class="player-art" style="--h:${Number(g.hue) || 0}">${esc(mono(g))}</div>`
+    : m.t === 'video' ? `<video controls preload="metadata" src="${m.src}"${m.thumb ? ` poster="${m.thumb}"` : ''}></video>`
+    : m.t === 'yt' ? `<iframe src="https://www.youtube-nocookie.com/embed/${m.id}" title="Vídeo de ${esc(g.name)}" allow="fullscreen; picture-in-picture"></iframe>`
+    : `<img src="${m.src}" alt="Imagem ${i + 1} de ${esc(g.name)}">`;
+  const capa = mediaUrl(g.cover);
+  return `<div class="wrap store">
     <button class="btn back" data-act="nav" data-v="catalogo">&larr; Catálogo</button>
-    <div class="stage-head">${cover(g, true)}
-      <div class="grow"><span class="label">${GNAME[g.group]}</span><h1>${esc(g.name)}</h1></div>
-      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar agora'}</button>` : ''}
-        <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Site oficial</a></div>
-    </div>
+    <div class="store-title"><h1>${esc(g.name)}</h1>${g.test ? '<span class="pill test static">Em teste</span>' : ''}</div>
     ${g.test ? '<div class="banner">Em teste: este jogo ainda está em desenvolvimento e pode mudar bastante.</div>' : ''}
-    ${gallery(g)}
+    <div class="store-top">
+      <div class="player">
+        <div class="player-main">${main}</div>
+        ${media.length > 1 ? `<div class="thumbs">${media.map((x,k) => `<button class="thumb${k === i ? ' on' : ''}" data-act="media" data-i="${k}" aria-label="Mídia ${k + 1} de ${media.length}">${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}${x.t !== 'img' ? `<span class="thumb-play">${ICON.play}</span>` : ''}</button>`).join('')}</div>` : ''}
+      </div>
+      <aside class="store-side">
+        ${capa ? `<img class="capsule" src="${capa}" alt="Capa de ${esc(g.name)}">` : `<div class="capsule player-art" style="--h:${Number(g.hue) || 0}">${esc(mono(g))}</div>`}
+        <p>${esc(g.desc)}</p>
+        <dl class="side-info">
+          <dt>Análises</dt><dd>${rk ? `<span class="starline">★ ${fmtMedia(rk.media)}</span> · ${rk.votos} voto${rk.votos > 1 ? 's' : ''}` : '<span class="muted">Sem análises ainda</span>'}</dd>
+          <dt>Estúdio</dt><dd>${g.studio ? esc(g.studio) : tbd}</dd>
+          <dt>Categoria</dt><dd>${GNAME[g.group]}</dd>
+        </dl>
+        <div class="tags">${g.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+      </aside>
+    </div>
+    <div class="playbox">
+      <div><h2>Jogar ${esc(g.name)}</h2><span class="muted">Grátis${g.embed === false ? ' · abre em outra aba' : ' · roda dentro do World Idle'}</span></div>
+      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary big" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar agora'}</button>` : ''}
+        <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Site oficial</a>
+        <button class="icon-btn heart${fav ? ' on' : ''}" data-act="fav" data-g="${esc(g.id)}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}" aria-pressed="${fav}">${ICON.heart}</button></div>
+    </div>
     <div class="cols">
-      <div class="about"><h2>Sobre o jogo</h2><p>${esc(g.long || g.desc)}</p>
-        <div class="tags">${g.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div></div>
-      <dl class="ficha">
-        <dt>Categoria</dt><dd>${GNAME[g.group]}</dd>
-        <dt>Nota</dt><dd>${rk ? `${fmtMedia(rk.media)} de 5 · ${rk.votos} voto${rk.votos > 1 ? 's' : ''}` : '<span class="muted">Sem votos ainda</span>'}</dd>
-        <dt>Roda no launcher</dt><dd>${g.embed === true ? 'Sim' : g.embed === false ? 'Abre em outra aba' : '<span class="muted">A testar</span>'}</dd>
+      <div class="about"><h2>Sobre este jogo</h2><p>${esc(g.long || g.desc)}</p></div>
+      <div class="about"><h2>Detalhes</h2><dl class="ficha">
+        <dt>Onde roda</dt><dd>Navegador</dd>
+        <dt>No launcher</dt><dd>${g.embed === true ? 'Roda dentro do World Idle' : g.embed === false ? 'Abre em outra aba' : '<span class="muted">A testar</span>'}</dd>
         <dt>Contas por jogador</dt><dd>${g.maxAcc ? g.maxAcc : tbd}</dd>
         <dt>Mercado entre jogadores</dt><dd>${g.market === true ? 'Sim' : g.market === false ? 'Não' : tbd}</dd>
-        <dt>Estúdio</dt><dd>${g.studio ? esc(g.studio) : tbd}</dd>
-      </dl>
+      </dl></div>
     </div>
     ${ownerBlock(g)}
+    <h2>Análises dos jogadores</h2>
     <div class="panel">
       <div class="panel-top"><h2>Sua avaliação</h2><span class="muted">${mine ? mine.stars + ' de 5' : 'Ainda sem nota'}</span></div>
       <div class="row stars">${[1,2,3,4,5].map(n => `<button class="star${mine && mine.stars >= n ? ' on' : ''}" data-act="rate" data-g="${esc(g.id)}" data-n="${n}" aria-label="${n} estrela${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
@@ -358,14 +387,8 @@ function viewJogo(){
         <input class="rev" id="rev-${esc(g.id)}" data-g="${esc(g.id)}" maxlength="200" placeholder="O que você achou do jogo?" value="${esc(mine.text)}"></div>`
         : `<p class="muted">Só avalia quem abriu o jogo pelo World Idle.</p>`}
     </div>
-    ${rv && rv.length ? `<h2>Comentários</h2><div class="list">${rv.map(x => `<div class="review"><span class="starline">${starsTxt(x.stars)}</span><div>${esc(x.comment)}</div></div>`).join('')}</div>` : ''}
+    ${rv && rv.length ? `<div class="list">${rv.map(x => `<div class="review"><span class="starline">${starsTxt(x.stars)}</span><div>${esc(x.comment)}</div></div>`).join('')}</div>` : `<div class="empty">Ninguém comentou ainda. Jogue e seja o primeiro.</div>`}
   </div>`;
-}
-function gallery(g){
-  const vid = ytId(g.video), imgs = [g.cover].concat(g.images).map(mediaUrl).filter(Boolean);
-  const arq = mediaUrl(g.videoFile);
-  if(!vid && !arq && !imgs.length) return '';
-  return `<div class="gallery">${arq ? `<video class="shot" controls preload="metadata" src="${arq}"${imgs[0] ? ` poster="${imgs[0]}"` : ''}></video>` : ''}${vid ? `<iframe class="shot" src="https://www.youtube-nocookie.com/embed/${vid}" title="Vídeo de ${esc(g.name)}" allow="fullscreen; picture-in-picture" loading="lazy"></iframe>` : ''}${imgs.map((u,i) => `<img class="shot" src="${u}" alt="Imagem ${i + 1} de ${esc(g.name)}" loading="lazy">`).join('')}</div>`;
 }
 function ownerBlock(g){
   if(g.mine || isAdmin) return `<div class="note2"><span>${g.mine ? 'Você é o dono desta página.' : 'Você pode editar esta página como administrador.'}</span><button class="btn primary" data-act="edit" data-g="${esc(g.id)}">Editar página</button></div>`;
@@ -615,7 +638,8 @@ document.addEventListener('click', e => {
   else if(a === 'focus' && s){ state.active = s.id; visit(s); }
   else if(a === 'open'){ openSession(el.dataset.g, false); }
   else if(a === 'newacc'){ openSession(el.dataset.g, true); }
-  else if(a === 'page'){ state.view = 'jogo'; state.page = el.dataset.g; state.active = null; loadReviews(el.dataset.g); }
+  else if(a === 'page'){ state.view = 'jogo'; state.page = el.dataset.g; state.active = null; mediaIdx = 0; loadReviews(el.dataset.g); }
+  else if(a === 'media'){ mediaIdx = Number(el.dataset.i) || 0; }
   else if(a === 'close' && s){ dropSession(s); state.sessions = state.sessions.filter(x => x !== s); if(state.active === s.id){ state.active = null; state.view = 'catalogo'; } }
   else if(a === 'auth'){ state.authMode = el.dataset.mode; state.view = user ? 'perfil' : 'conta'; state.active = null; }
   else if(a === 'fav'){ const g = el.dataset.g; state.favs = state.favs.includes(g) ? state.favs.filter(x => x !== g) : state.favs.concat(g); }
