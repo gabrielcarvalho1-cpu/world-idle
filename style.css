@@ -28,9 +28,10 @@ svg{flex:none}
 .app{height:100%;display:grid;grid-template-columns:230px minmax(0,1fr)}
 .rail{display:flex;flex-direction:column;gap:18px;padding:22px 10px 14px;border-right:1px solid var(--line);
   background:linear-gradient(180deg,#071a35 0%,#0a2c59 55%,#06162e 100%)}
-.brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding-bottom:16px;margin-inline:10px;border-bottom:1px solid var(--line2);
+.brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 0 16px;margin-inline:10px;border:0;border-bottom:1px solid var(--line2);background:transparent;color:var(--fg);cursor:pointer;
   font-family:var(--f-display);font-weight:700;font-size:19px;letter-spacing:.2em}
 .brand svg{width:78px;height:44px}
+.brand:hover{opacity:.85}
 .nav{display:flex;flex-direction:column;gap:4px}
 .nav button{display:flex;align-items:center;gap:14px;padding:11px 14px;border:1px solid transparent;border-left:4px solid transparent;border-radius:6px;
   background:transparent;color:var(--fg);font-size:17px;text-align:left}
