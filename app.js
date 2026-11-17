@@ -29,6 +29,8 @@ let byDb = {};       // id do banco -> jogo
 let rank = {};       // id do banco -> {media, votos}
 let myRatings = {};  // slug -> {stars, text}
 let reviews = {};    // slug -> [{stars, comment}]
+let myClaims = {};   // slug -> pedido de reivindicação do usuário
+let pendingClaims = []; // pedidos pendentes (só admin)
 let user = null, isAdmin = false, nick = '';
 let loading = true, loadError = '', query = '';
 
@@ -64,12 +66,17 @@ function toast(msg){
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
   $('#toasts').appendChild(el); setTimeout(() => el.remove(), 6000);
 }
+const safePath = p => typeof p === 'string' && /^[A-Za-z0-9_\-./]+$/.test(p) ? p : '';
+const mediaUrl = p => safePath(p) ? SUPA_URL + '/storage/v1/object/public/media/' + safePath(p) : '';
+const artStyle = g => `--h:${Number(g.hue) || 0}` + (mediaUrl(g.cover) ? `;background-image:url('${mediaUrl(g.cover)}')` : '');
+const ytId = u => { const m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/.exec(u || ''); return m ? m[1] : null; };
 const slugify = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'jogo';
 
 /* ---------- dados ---------- */
 function mapGame(r){
   return {id:r.slug, dbId:r.id, name:r.name, url:r.url, group:r.category, hue:r.hue, tags:r.tags || [], desc:r.short_desc, long:r.long_desc,
-    maxAcc:r.max_accounts, market:r.has_market, studio:r.studio, embed:r.embed_ok, status:r.status, mine: !!user && r.owner_id === user.id};
+    maxAcc:r.max_accounts, market:r.has_market, studio:r.studio, embed:r.embed_ok, status:r.status, mine: !!user && r.owner_id === user.id,
+    cover:r.cover_path, images:r.images || [], video:r.video_url, test:r.is_test, owner:r.owner_id};
 }
 async function loadGames(){
   const {data, error} = await sb.from('games').select('*').order('id');
@@ -97,18 +104,26 @@ async function mergeSessions(rows){
   state.sessions = server.concat(extra);
   state.sessions.forEach(s => { if(!state.library.includes(s.game)) state.library.push(s.game); });
 }
+let claimsRes = null;
 async function loadUserData(){
-  myRatings = {}; isAdmin = false; nick = '';
+  myRatings = {}; isAdmin = false; nick = ''; myClaims = {}; pendingClaims = [];
   if(!user) return;
   const [p, r, ug, adm] = await Promise.all([
     sb.from('profiles').select('nick').eq('id', user.id).maybeSingle(),
     sb.from('ratings').select('game_id,stars,comment').eq('user_id', user.id),
     sb.from('user_games').select('game_id,account,alarm_set,alarm_at,seen_at'),
     sb.rpc('am_i_admin'),
-  ]);
+    sb.from('game_claims').select('id,game_id,user_id,code,contact,status'),
+  ]).then(res => { claimsRes = res[4]; return res; });
   nick = p.data ? p.data.nick : '';
   (r.data || []).forEach(x => { const g = byDb[x.game_id]; if(g) myRatings[g.id] = {stars:x.stars, text:x.comment}; });
   isAdmin = adm.data === true;
+  ((claimsRes && claimsRes.data) || []).forEach(c => {
+    const g = byDb[c.game_id]; if(!g) return;
+    if(c.user_id === user.id) myClaims[g.id] = c;
+    if(c.status === 'pendente') pendingClaims.push(c);
+  });
+  if(!isAdmin) pendingClaims = [];
   if(!ug.error) await mergeSessions(ug.data || []);
 }
 function pushSession(s){
@@ -164,10 +179,10 @@ function cardsHTML(list, vazio){
     const open = state.sessions.some(s => s.game === g.id), rk = rank[g.dbId], fav = state.favs.includes(g.id);
     const sub = (g.tags.length >= 2 ? [GNAME[g.group]].concat(g.tags.slice(0, 2)).join(' • ') : g.desc) + (rk ? ' • ★ ' + fmtMedia(rk.media) : '') + (g.embed === false ? ' • Abre em outra aba' : '');
     return `<article class="card">
-      <div class="card-art" style="--h:${Number(g.hue) || 0}" aria-hidden="true">${esc(mono(g))}${open ? '<span class="pill"><i></i>Em execução</span>' : ''}</div>
+      <div class="card-art${mediaUrl(g.cover) ? ' has-img' : ''}" style="${artStyle(g)}" aria-hidden="true">${mediaUrl(g.cover) ? '' : esc(mono(g))}${g.test ? '<span class="pill test">Em teste</span>' : open ? '<span class="pill"><i></i>Em execução</span>' : ''}</div>
       <div class="card-body"><h3>${esc(g.name)}</h3><p class="card-sub" title="${esc(g.desc)}">${esc(sub)}</p>
         <div class="card-actions">
-          <button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>
+          ${g.test ? `<button class="btn" data-act="page" data-g="${esc(g.id)}">Ver página</button>` : `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>`}
           <button class="icon-btn" data-act="page" data-g="${esc(g.id)}" aria-label="Sobre ${esc(g.name)}">${ICON.info}</button>
           <button class="icon-btn heart${fav ? ' on' : ''}" data-act="fav" data-g="${esc(g.id)}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}" aria-pressed="${fav}">${ICON.heart}</button>
         </div></div>
@@ -183,7 +198,7 @@ function gridHTML(){
 const cats = () => GROUPS.map(([k,t]) => `<button data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${k === 'incremental' ? 'Clickers' : t}</button>`).join('');
 const chips = () => GROUPS.map(([k,t]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${t}</button>`).join('');
 function featured(){
-  const list = catalog(); if(!list.length) return null;
+  const list = catalog().filter(g => !g.test); if(!list.length) return null;
   const ranked = list.filter(g => rank[g.dbId]).sort((a,b) => rank[b.dbId].media - rank[a.dbId].media || rank[b.dbId].votos - rank[a.dbId].votos);
   return ranked[0] || list.find(g => g.embed === true) || list[0];
 }
@@ -193,8 +208,8 @@ function viewCatalogo(){
   return `<div class="wrap">
     <div class="head"><span class="label">Catálogo</span><h1>Encontre seu próximo idle.</h1></div>
     <div class="hero-row">
-      ${f ? `<section class="hero" style="--h:${Number(f.hue) || 0}">
-        <div class="hero-art" aria-hidden="true">${esc(mono(f))}</div>
+      ${f ? `<section class="hero${mediaUrl(f.cover) ? ' has-img' : ''}" style="${artStyle(f)}">
+        <div class="hero-art" aria-hidden="true">${mediaUrl(f.cover) ? '' : esc(mono(f))}</div>
         <div class="hero-text"><span class="label">Em destaque</span><h2 class="hero-title">${esc(f.name)}</h2><p>${esc(f.desc)}</p>
           <div class="row"><button class="btn primary big" data-act="open" data-g="${esc(f.id)}">${fOpen ? 'Continuar' : 'Jogar agora'}</button></div></div>
       </section>` : ''}
@@ -317,9 +332,11 @@ function viewJogo(){
     <button class="btn back" data-act="nav" data-v="catalogo">&larr; Catálogo</button>
     <div class="stage-head">${cover(g, true)}
       <div class="grow"><span class="label">${GNAME[g.group]}</span><h1>${esc(g.name)}</h1></div>
-      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir no launcher'}</button>` : ''}
+      <div class="row">${g.status === 'aprovado' && !g.test ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir no launcher'}</button>` : ''}
         <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Site oficial</a></div>
     </div>
+    ${g.test ? '<div class="banner">Em teste: esta é uma página modelo. O jogo ainda não está aberto ao público.</div>' : ''}
+    ${gallery(g)}
     <div class="cols">
       <div class="about"><h2>Sobre o jogo</h2><p>${esc(g.long || g.desc)}</p>
         <div class="tags">${g.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div></div>
@@ -332,6 +349,7 @@ function viewJogo(){
         <dt>Estúdio</dt><dd>${g.studio ? esc(g.studio) : tbd}</dd>
       </dl>
     </div>
+    ${ownerBlock(g)}
     <div class="panel">
       <div class="panel-top"><h2>Sua avaliação</h2><span class="muted">${mine ? mine.stars + ' de 5' : 'Ainda sem nota'}</span></div>
       <div class="row stars">${[1,2,3,4,5].map(n => `<button class="star${mine && mine.stars >= n ? ' on' : ''}" data-act="rate" data-g="${esc(g.id)}" data-n="${n}" aria-label="${n} estrela${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
@@ -340,6 +358,43 @@ function viewJogo(){
         : `<p class="muted">Só avalia quem abriu o jogo pelo World Idle.</p>`}
     </div>
     ${rv && rv.length ? `<h2>Comentários</h2><div class="list">${rv.map(x => `<div class="review"><span class="starline">${starsTxt(x.stars)}</span><div>${esc(x.comment)}</div></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+function gallery(g){
+  const vid = ytId(g.video), imgs = [g.cover].concat(g.images).map(mediaUrl).filter(Boolean);
+  if(!vid && !imgs.length) return '';
+  return `<div class="gallery">${vid ? `<iframe class="shot" src="https://www.youtube-nocookie.com/embed/${vid}" title="Vídeo de ${esc(g.name)}" allow="fullscreen; picture-in-picture" loading="lazy"></iframe>` : ''}${imgs.map((u,i) => `<img class="shot" src="${u}" alt="Imagem ${i + 1} de ${esc(g.name)}" loading="lazy">`).join('')}</div>`;
+}
+function ownerBlock(g){
+  if(g.mine || isAdmin) return `<div class="note2"><span>${g.mine ? 'Você é o dono desta página.' : 'Você pode editar esta página como administrador.'}</span><button class="btn primary" data-act="edit" data-g="${esc(g.id)}">Editar página</button></div>`;
+  if(g.owner) return '';
+  const c = myClaims[g.id];
+  if(c){
+    const st = {pendente:['analise','Em conferência'], verificado:['aprovado','Confirmado'], recusado:['recusado','Recusado']}[c.status];
+    return `<div class="panel"><div class="panel-top"><h2>Seu pedido de dono da página</h2><span class="st ${st[0]}">${st[1]}</span></div>
+      <p>Código de verificação: <b class="num">${esc(c.code)}</b></p>
+      <p class="muted">Coloque esse código em um lugar visível do site do jogo (rodapé ou página "sobre") ou envie pelo contato oficial do jogo. A equipe do World Idle confere e libera a edição da página.</p></div>`;
+  }
+  return `<div class="note2"><span>Página ainda não reivindicada pelo estúdio.</span><button class="btn" data-act="claim" data-g="${esc(g.id)}">Sou o dono deste jogo</button></div>`;
+}
+function viewEditar(){
+  const g = G[state.page]; if(!g || !(g.mine || isAdmin)) return viewJogo();
+  return `<div class="wrap">
+    <button class="btn back" data-act="page" data-g="${esc(g.id)}">&larr; Voltar pra página</button>
+    <div class="head"><h1>Editar ${esc(g.name)}</h1><p class="muted">As mudanças aparecem na hora na página do jogo.</p></div>
+    <form class="form" data-form="editar" data-g="${esc(g.id)}">
+      <div class="f wide"><label class="label" for="ed-curta">Descrição curta</label><input id="ed-curta" maxlength="140" required value="${esc(g.desc)}"></div>
+      <div class="f wide"><label class="label" for="ed-longa">Descrição completa</label><textarea id="ed-longa" rows="5" maxlength="1200">${esc(g.long)}</textarea></div>
+      <div class="f"><label class="label" for="ed-contas">Contas por jogador</label><input id="ed-contas" type="number" min="1" max="20" value="${g.maxAcc || ''}" placeholder="Quantas o jogo permite"></div>
+      <div class="f"><label class="label" for="ed-estudio">Estúdio</label><input id="ed-estudio" maxlength="40" value="${esc(g.studio)}"></div>
+      <div class="f wide"><label class="label" for="ed-video">Vídeo do YouTube</label><input id="ed-video" type="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(g.video || '')}"></div>
+      <div class="f"><label class="label" for="ed-capa">Capa (16:9, até 3 MB)</label><input id="ed-capa" type="file" accept="image/png,image/jpeg,image/webp">
+        <span class="muted">${g.cover ? 'Já tem capa. Envie outra pra trocar.' : 'Ainda sem capa.'}</span></div>
+      <div class="f"><label class="label" for="ed-imagens">Imagens do jogo (até 8)</label><input id="ed-imagens" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+        <span class="muted">${g.images.length ? g.images.length + ' imagem(ns) na página. Enviar novas substitui as atuais.' : 'Ainda sem imagens.'}</span></div>
+      <label class="check wide"><input id="ed-mercado" type="checkbox" ${g.market ? 'checked' : ''}> O jogo tem mercado entre jogadores</label>
+      <div class="wide"><button class="btn primary">Salvar página</button></div>
+    </form>
   </div>`;
 }
 function viewRanking(){
@@ -374,6 +429,7 @@ function viewEstudios(){
     <h2>O que informar</h2>
     <dl class="ficha">${kit.map(([a,b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>
     <p class="muted">Pra o jogo rodar dentro do World Idle, o site dele precisa permitir abrir dentro de outra página. É uma configuração do lado do jogo.</p>
+    <div class="note2"><span>Seu jogo já está no catálogo? Abra a página dele e clique em "Sou o dono deste jogo" pra assumir e colocar capa, imagens e vídeo.</span><button class="btn" data-act="nav" data-v="catalogo">Ver catálogo</button></div>
     <h2>Enviar meu jogo</h2>
     ${user ? `<form class="form" data-form="envio">
       <div class="f"><label class="label" for="env-nome">Nome do jogo</label><input id="env-nome" maxlength="40" required></div>
@@ -409,6 +465,13 @@ function viewAnalise(){
           <button class="btn primary" data-act="approve" data-g="${esc(c.id)}">Aprovar</button>
           <button class="btn" data-act="reject" data-g="${esc(c.id)}">Recusar</button></div></div>`).join('') + `</div>`
       : `<div class="empty">Nenhum jogo esperando análise.</div>`}
+    <h2>Pedidos de dono de página</h2>
+    ${pendingClaims.length ? `<div class="list">` + pendingClaims.map(c => { const g = byDb[c.game_id]; return !g ? '' : `<div class="item">${cover(g)}
+        <div class="grow"><b>${esc(g.name)}</b><span class="muted">Código: <span class="num">${esc(c.code)}</span>${c.contact ? ' · ' + esc(c.contact) : ''}</span></div>
+        <div class="row"><a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Conferir no site</a>
+          <button class="btn primary" data-act="claim-ok" data-c="${c.id}">Confirmar dono</button>
+          <button class="btn" data-act="claim-no" data-c="${c.id}">Recusar</button></div></div>`; }).join('') + `</div>`
+      : `<div class="empty">Nenhum pedido pendente.</div>`}
   </div>`;
 }
 
@@ -442,7 +505,7 @@ function render(){
   const s = state.active && sess(state.active);
   if(!s) state.active = null;
   renderNav(); renderTabs(); syncFrames();
-  const views = {biblioteca:viewBiblioteca, conta:viewConta, catalogo:viewCatalogo, avisos:viewAvisos, perfil:viewPerfil, mercado:viewMercado, estudios:viewEstudios, jogo:viewJogo, analise:viewAnalise, ranking:viewRanking};
+  const views = {editar:viewEditar, biblioteca:viewBiblioteca, conta:viewConta, catalogo:viewCatalogo, avisos:viewAvisos, perfil:viewPerfil, mercado:viewMercado, estudios:viewEstudios, jogo:viewJogo, analise:viewAnalise, ranking:viewRanking};
   let html;
   if(loading) html = `<div class="wrap"><div class="empty">Carregando jogos…</div></div>`;
   else if(loadError) html = `<div class="wrap"><div class="empty">${esc(loadError)}</div></div>`;
@@ -472,6 +535,7 @@ function visit(s){
 }
 function openSession(gameId, forceNew){
   const g = G[gameId]; if(!g || g.status !== 'aprovado') return;
+  if(g.test){ toast(g.name + ' está em teste e ainda não abre pelo launcher.'); return; }
   const mine = state.sessions.filter(s => s.game === gameId);
   if(mine.length && !forceNew){ state.active = mine[0].id; visit(mine[0]); return; }
   if(mine.length >= limit(g)){
@@ -512,6 +576,33 @@ async function review(admin, slug){
   await loadGames(); save(); render();
 }
 
+async function claim(slug){
+  const g = G[slug]; if(!g) return;
+  if(!user){ toast('Crie sua conta ou entre pra assumir a página do seu jogo.'); state.authMode = 'criar'; state.view = 'conta'; state.active = null; render(); return; }
+  const {data, error} = await sb.from('game_claims').insert({game_id:g.dbId}).select('id,game_id,user_id,code,contact,status').single();
+  if(error){ toast('Não consegui registrar o pedido: ' + error.message); return; }
+  myClaims[slug] = data; toast('Pedido registrado. Veja o código de verificação na página.'); render();
+}
+async function decideClaim(id, ok){
+  const c = pendingClaims.find(x => x.id === id); if(!c || !isAdmin) return;
+  if(ok){
+    const r = await sb.from('games').update({owner_id:c.user_id}).eq('id', c.game_id);
+    if(r.error){ toast('Não consegui passar a página: ' + r.error.message); return; }
+  }
+  const {error} = await sb.from('game_claims').update({status: ok ? 'verificado' : 'recusado'}).eq('id', id);
+  if(error){ toast('Não consegui salvar: ' + error.message); return; }
+  toast(ok ? 'Dono confirmado. Ele já pode editar a página.' : 'Pedido recusado.');
+  await refreshAll();
+}
+const EXT = {'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp'};
+async function uploadImg(g, file, nome){
+  if(!EXT[file.type]) throw new Error('Use imagens JPG, PNG ou WebP.');
+  if(file.size > 3 * 1024 * 1024) throw new Error('Cada imagem pode ter até 3 MB.');
+  const path = `${g.dbId}/${nome}-${Date.now()}.${EXT[file.type]}`;
+  const {error} = await sb.storage.from('media').upload(path, file, {contentType:file.type, cacheControl:'3600'});
+  if(error) throw new Error(error.message);
+  return path;
+}
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if(!el) return;
   const a = el.dataset.act, s = el.dataset.s && sess(el.dataset.s);
@@ -528,6 +619,9 @@ document.addEventListener('click', e => {
   else if(a === 'clear' && s){ s.alarmAt = 0; s.alarmSet = 0; s.due = false; pushSession(s); }
   else if(a === 'filter'){ state.filter = el.dataset.f; }
   else if(a === 'rate'){ rate(el.dataset.g, Number(el.dataset.n)); return; }
+  else if(a === 'edit'){ state.view = 'editar'; state.page = el.dataset.g; state.active = null; }
+  else if(a === 'claim'){ claim(el.dataset.g); return; }
+  else if(a === 'claim-ok' || a === 'claim-no'){ decideClaim(Number(el.dataset.c), a === 'claim-ok'); return; }
   else if(a === 'approve' || a === 'reject'){ review(a, el.dataset.g); return; }
   else if(a === 'logout'){ sb.auth.signOut(); return; }
   else return;
@@ -554,6 +648,26 @@ document.addEventListener('submit', async e => {
       if(error){ toast(/confirm/i.test(error.message) ? 'Confirme seu e-mail pelo link que enviamos antes de entrar.' : 'E-mail ou senha incorretos.'); return; }
       toast('Você entrou.'); state.view = 'catalogo'; save();
     }
+  }else if(kind === 'editar'){
+    const g = G[f.dataset.g]; if(!g || !(g.mine || isAdmin)) return;
+    const v = id => f.querySelector('#ed-' + id).value.trim();
+    const n = v('contas') ? Math.round(Number(v('contas'))) : null;
+    if(!v('curta')){ toast('A descrição curta não pode ficar vazia.'); return; }
+    if(n !== null && !(n >= 1 && n <= 20)){ toast('Contas por jogador: de 1 a 20.'); return; }
+    if(v('video') && !ytId(v('video'))){ toast('O vídeo precisa ser um link do YouTube.'); return; }
+    const patch = {short_desc:v('curta'), long_desc:v('longa'), max_accounts:n, studio:v('estudio'), has_market:f.querySelector('#ed-mercado').checked,
+      video_url: v('video') ? 'https://www.youtube.com/watch?v=' + ytId(v('video')) : null};
+    const btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Salvando…';
+    try{
+      const capa = f.querySelector('#ed-capa').files[0], imgs = [...f.querySelector('#ed-imagens').files];
+      if(imgs.length > 8) throw new Error('Envie no máximo 8 imagens.');
+      if(capa) patch.cover_path = await uploadImg(g, capa, 'capa');
+      if(imgs.length){ patch.images = []; let i = 0; for(const im of imgs) patch.images.push(await uploadImg(g, im, 'img' + (++i))); }
+      const {error} = await sb.from('games').update(patch).eq('id', g.dbId);
+      if(error) throw new Error(error.message);
+    }catch(err){ toast('Não consegui salvar: ' + err.message); btn.disabled = false; btn.textContent = 'Salvar página'; return; }
+    toast('Página salva.');
+    await loadGames(); state.view = 'jogo'; save(); render();
   }else if(kind === 'envio'){
     if(!user){ toast('Entre na sua conta pra enviar um jogo.'); return; }
     const v = id => f.querySelector('#env-' + id).value.trim();

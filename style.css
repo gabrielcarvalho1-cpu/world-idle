@@ -130,6 +130,14 @@ input:not([type=checkbox]),select,textarea{padding:9px 12px;border-radius:6px;bo
 .heart.on{color:#ff8093}
 .heart.on svg{fill:currentColor}
 
+.card-art.has-img,.hero.has-img{background-size:cover;background-position:center}
+.pill.test{background:#4a3200;color:#ffe2a6}
+.banner{padding:10px 14px;border:1px solid #c9973a;border-radius:8px;background:#3a2a06;color:#ffe2a6;font-weight:600}
+.note2{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border:1px dashed var(--line2);border-radius:10px}
+.gallery{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px}
+.shot{flex:0 0 auto;width:min(420px,80vw);aspect-ratio:16/9;border:1px solid var(--line2);border-radius:10px;background:#000;object-fit:cover}
+input[type=file]{padding:7px;width:100%}
+
 /* capas pequenas */
 .cover{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:8px;color:#fff;font-family:var(--f-display);font-weight:800;font-size:15px;
   background:linear-gradient(135deg,hsl(var(--h) 62% 46%),hsl(calc(var(--h) + 50) 66% 28%))}
