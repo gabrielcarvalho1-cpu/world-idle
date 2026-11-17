@@ -434,6 +434,11 @@ function syncFrames(){
 }
 
 function render(){
+  if(loading || loadError){
+    // os jogos ainda não chegaram do banco: não desenha abas nem telas que dependem deles
+    $('#view').innerHTML = `<div class="wrap"><div class="empty">${loading ? 'Carregando jogos…' : esc(loadError)}</div></div>`;
+    return;
+  }
   const s = state.active && sess(state.active);
   if(!s) state.active = null;
   renderNav(); renderTabs(); syncFrames();
@@ -447,6 +452,7 @@ function render(){
   tick();
 }
 function tick(){
+  if(loading || loadError) return;
   const now = Date.now(); let fired = false;
   for(const s of state.sessions){
     if(s.alarmAt && !s.due && now >= s.alarmAt){ s.due = true; fired = true; toast(label(s) + ': hora de voltar.'); }
