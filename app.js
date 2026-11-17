@@ -744,7 +744,20 @@ async function refreshAll(){
   await Promise.all([loadRank(), loadUserData()]);
   loading = false; save(); render();
 }
+const VERSAO = '11';
+async function confereVersao(){
+  // se o site foi atualizado e o navegador ainda está com a versão antiga guardada, recarrega sozinho
+  try{
+    const r = await fetch('versao.txt?' + Date.now(), {cache:'no-store'}); if(!r.ok) return;
+    const nova = (await r.text()).trim();
+    if(nova && nova !== VERSAO && sessionStorage.getItem('wi-recarregou') !== nova){
+      sessionStorage.setItem('wi-recarregou', nova);
+      location.replace(location.pathname + '?v=' + encodeURIComponent(nova));
+    }
+  }catch(e){}
+}
 async function boot(){
+  confereVersao();
   render();
   if(!sb){ loading = false; loadError = 'Não consegui carregar o World Idle. Verifique a internet e recarregue.'; render(); return; }
   try{
