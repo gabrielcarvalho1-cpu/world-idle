@@ -67,7 +67,7 @@ function toast(msg){
   $('#toasts').appendChild(el); setTimeout(() => el.remove(), 6000);
 }
 const safePath = p => typeof p === 'string' && /^[A-Za-z0-9_\-./]+$/.test(p) ? p : '';
-const mediaUrl = p => safePath(p) ? SUPA_URL + '/storage/v1/object/public/media/' + safePath(p) : '';
+const mediaUrl = p => !safePath(p) ? '' : p.startsWith('site/') ? 'media/' + p.slice(5) : SUPA_URL + '/storage/v1/object/public/media/' + p;
 const artStyle = g => `--h:${Number(g.hue) || 0}` + (mediaUrl(g.cover) ? `;background-image:url('${mediaUrl(g.cover)}')` : '');
 const ytId = u => { const m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/.exec(u || ''); return m ? m[1] : null; };
 const slugify = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'jogo';
@@ -182,7 +182,7 @@ function cardsHTML(list, vazio){
       <div class="card-art${mediaUrl(g.cover) ? ' has-img' : ''}" style="${artStyle(g)}" aria-hidden="true">${mediaUrl(g.cover) ? '' : esc(mono(g))}${g.test ? '<span class="pill test">Em teste</span>' : open ? '<span class="pill"><i></i>Em execução</span>' : ''}</div>
       <div class="card-body"><h3>${esc(g.name)}</h3><p class="card-sub" title="${esc(g.desc)}">${esc(sub)}</p>
         <div class="card-actions">
-          ${g.test ? `<button class="btn" data-act="page" data-g="${esc(g.id)}">Ver página</button>` : `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>`}
+          <button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>
           <button class="icon-btn" data-act="page" data-g="${esc(g.id)}" aria-label="Sobre ${esc(g.name)}">${ICON.info}</button>
           <button class="icon-btn heart${fav ? ' on' : ''}" data-act="fav" data-g="${esc(g.id)}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}" aria-pressed="${fav}">${ICON.heart}</button>
         </div></div>
@@ -332,10 +332,10 @@ function viewJogo(){
     <button class="btn back" data-act="nav" data-v="catalogo">&larr; Catálogo</button>
     <div class="stage-head">${cover(g, true)}
       <div class="grow"><span class="label">${GNAME[g.group]}</span><h1>${esc(g.name)}</h1></div>
-      <div class="row">${g.status === 'aprovado' && !g.test ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir no launcher'}</button>` : ''}
+      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir no launcher'}</button>` : ''}
         <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Site oficial</a></div>
     </div>
-    ${g.test ? '<div class="banner">Em teste: esta é uma página modelo. O jogo ainda não está aberto ao público.</div>' : ''}
+    ${g.test ? '<div class="banner">Em teste: este jogo ainda está em desenvolvimento e pode mudar bastante.</div>' : ''}
     ${gallery(g)}
     <div class="cols">
       <div class="about"><h2>Sobre o jogo</h2><p>${esc(g.long || g.desc)}</p>
@@ -538,7 +538,6 @@ function visit(s){
 }
 function openSession(gameId, forceNew){
   const g = G[gameId]; if(!g || g.status !== 'aprovado') return;
-  if(g.test){ toast(g.name + ' está em teste e ainda não abre pelo launcher.'); return; }
   const mine = state.sessions.filter(s => s.game === gameId);
   if(mine.length && !forceNew){ state.active = mine[0].id; visit(mine[0]); return; }
   if(mine.length >= limit(g)){
