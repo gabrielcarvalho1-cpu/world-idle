@@ -268,6 +268,7 @@ function viewStage(s){
       <div class="grow"><h1>${esc(label(s))}</h1>
         <p class="muted">Contas abertas: ${n} de ${limit(g)}${g.maxAcc ? '' : ' (limite a informar pelo estúdio)'} · Última visita há <span class="num" data-away="${esc(s.id)}"></span></p></div>
       <div class="row">${n < limit(g) ? `<button class="btn" data-act="newacc" data-g="${esc(g.id)}">Outra conta</button>` : ''}
+${emb ? `<button class="btn primary" data-act="full">Tela cheia</button>` : ''}
         <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener" data-act="played" data-s="${esc(s.id)}">Abrir em outra aba</a>
         <button class="btn" data-act="close" data-s="${esc(s.id)}">Fechar aba</button></div>
     </div>`;
@@ -652,6 +653,13 @@ document.addEventListener('click', e => {
   else if(a === 'claim'){ claim(el.dataset.g); return; }
   else if(a === 'claim-ok' || a === 'claim-no'){ decideClaim(Number(el.dataset.c), a === 'claim-ok'); return; }
   else if(a === 'approve' || a === 'reject'){ review(a, el.dataset.g); return; }
+  else if(a === 'full'){
+    const alvo = $('#frames');
+    const pede = alvo.requestFullscreen || alvo.webkitRequestFullscreen;
+    if(!pede){ toast('Este navegador não deixa abrir em tela cheia. Use "Abrir em outra aba".'); return; }
+    Promise.resolve(pede.call(alvo)).catch(() => toast('Não consegui abrir em tela cheia neste navegador.'));
+    return;
+  }
   else if(a === 'logout'){ sb.auth.signOut(); return; }
   else return;
   save(); render();

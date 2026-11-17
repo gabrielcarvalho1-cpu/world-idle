@@ -177,6 +177,7 @@ input[type=file]{padding:7px;width:100%}
 #frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
 .main.staging #view{flex:none;max-height:46%;padding-block:12px}
 .main.staging #frames{display:block}
+#frames:fullscreen{display:block;width:100%;height:100%;border:0;background:#000}
 .tight{gap:10px}
 .tight h1{font-size:19px}
 .tight .cover.lg{width:44px;height:44px;font-size:15px}
