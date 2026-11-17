@@ -54,7 +54,7 @@ const label = s => G[s.game].name + (s.acc > 1 ? ' · conta ' + s.acc : '');
 const mono = g => g.name.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase();
 const cover = (g, lg) => `<span class="cover${lg ? ' lg' : ''}" style="--h:${Number(g.hue) || 0}" aria-hidden="true">${esc(mono(g))}</span>`;
 const limit = g => g.maxAcc || 1;
-const catalog = () => Object.values(G).filter(g => g.status === 'aprovado').sort((a,b) => gOrder(a.group) - gOrder(b.group) || a.dbId - b.dbId);
+const catalog = () => Object.values(G).filter(g => g.status === 'aprovado').sort((a,b) => b.pin - a.pin || gOrder(a.group) - gOrder(b.group) || a.dbId - b.dbId);
 const starsTxt = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 const fmtMedia = m => m.toFixed(1).replace('.', ',');
 function fmt(ms){
@@ -76,7 +76,7 @@ const slugify = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().re
 function mapGame(r){
   return {id:r.slug, dbId:r.id, name:r.name, url:r.url, group:r.category, hue:r.hue, tags:r.tags || [], desc:r.short_desc, long:r.long_desc,
     maxAcc:r.max_accounts, market:r.has_market, studio:r.studio, embed:r.embed_ok, status:r.status, mine: !!user && r.owner_id === user.id,
-    cover:r.cover_path, images:r.images || [], video:r.video_url, videoFile:r.video_path, test:r.is_test, owner:r.owner_id};
+    cover:r.cover_path, images:r.images || [], video:r.video_url, videoFile:r.video_path, test:r.is_test, pin:r.pin || 0, owner:r.owner_id};
 }
 async function loadGames(){
   const {data, error} = await sb.from('games').select('*').order('id');
@@ -182,7 +182,7 @@ function cardsHTML(list, vazio){
       <div class="card-art${mediaUrl(g.cover) ? ' has-img' : ''}" style="${artStyle(g)}" aria-hidden="true">${mediaUrl(g.cover) ? '' : esc(mono(g))}${g.test ? '<span class="pill test">Em teste</span>' : open ? '<span class="pill"><i></i>Em execução</span>' : ''}</div>
       <div class="card-body"><h3>${esc(g.name)}</h3><p class="card-sub" title="${esc(g.desc)}">${esc(sub)}</p>
         <div class="card-actions">
-          <button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>
+          <button class="btn primary" data-act="${open ? 'open' : 'page'}" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>
           <button class="icon-btn" data-act="page" data-g="${esc(g.id)}" aria-label="Sobre ${esc(g.name)}">${ICON.info}</button>
           <button class="icon-btn heart${fav ? ' on' : ''}" data-act="fav" data-g="${esc(g.id)}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}" aria-pressed="${fav}">${ICON.heart}</button>
         </div></div>
@@ -198,7 +198,8 @@ function gridHTML(){
 const cats = () => GROUPS.map(([k,t]) => `<button data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${k === 'incremental' ? 'Clickers' : t}</button>`).join('');
 const chips = () => GROUPS.map(([k,t]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${t}</button>`).join('');
 function featured(){
-  const list = catalog().filter(g => !g.test); if(!list.length) return null;
+  const all = catalog(); if(all.length && all[0].pin > 0) return all[0];
+  const list = all.filter(g => !g.test); if(!list.length) return null;
   const ranked = list.filter(g => rank[g.dbId]).sort((a,b) => rank[b.dbId].media - rank[a.dbId].media || rank[b.dbId].votos - rank[a.dbId].votos);
   return ranked[0] || list.find(g => g.embed === true) || list[0];
 }
@@ -210,8 +211,8 @@ function viewCatalogo(){
     <div class="hero-row">
       ${f ? `<section class="hero${mediaUrl(f.cover) ? ' has-img' : ''}" style="${artStyle(f)}">
         <div class="hero-art" aria-hidden="true">${mediaUrl(f.cover) ? '' : esc(mono(f))}</div>
-        <div class="hero-text"><span class="label">Em destaque</span><h2 class="hero-title">${esc(f.name)}</h2><p>${esc(f.desc)}</p>
-          <div class="row"><button class="btn primary big" data-act="open" data-g="${esc(f.id)}">${fOpen ? 'Continuar' : 'Jogar agora'}</button></div></div>
+        <div class="hero-text"><span class="label">Em destaque${f.test ? ' · em teste' : ''}</span><h2 class="hero-title">${esc(f.name)}</h2><p>${esc(f.desc)}</p>
+          <div class="row"><button class="btn primary big" data-act="${fOpen ? 'open' : 'page'}" data-g="${esc(f.id)}">${fOpen ? 'Continuar' : 'Jogar agora'}</button></div></div>
       </section>` : ''}
       <aside class="running"><span class="label">${ICON.playc}Em execução</span>
         ${n ? state.sessions.slice(0, 4).map(s => `<div class="run-item">${cover(G[s.game])}
@@ -332,7 +333,7 @@ function viewJogo(){
     <button class="btn back" data-act="nav" data-v="catalogo">&larr; Catálogo</button>
     <div class="stage-head">${cover(g, true)}
       <div class="grow"><span class="label">${GNAME[g.group]}</span><h1>${esc(g.name)}</h1></div>
-      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir no launcher'}</button>` : ''}
+      <div class="row">${g.status === 'aprovado' ? `<button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar agora'}</button>` : ''}
         <a class="btn" href="${esc(g.url)}" target="_blank" rel="noopener">Site oficial</a></div>
     </div>
     ${g.test ? '<div class="banner">Em teste: este jogo ainda está em desenvolvimento e pode mudar bastante.</div>' : ''}
