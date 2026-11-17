@@ -17,7 +17,12 @@ const ICON = {
   mercado:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3"/><path d="M20 16H6l3 3"/></svg>',
   estudios:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
 };
-const NAV = [['catalogo','Catálogo'],['ranking','Ranking'],['avisos','Avisos'],['perfil','Perfil'],['mercado','Mercado'],['estudios','Estúdios']];
+ICON.biblioteca = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4v16M10 4v16M15 5l4 15"/></svg>';
+ICON.info = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>';
+ICON.heart = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
+ICON.play = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l14 8-14 8z"/></svg>';
+ICON.playc = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z" fill="currentColor"/></svg>';
+const NAV = [['catalogo','Catálogo'],['biblioteca','Biblioteca'],['ranking','Ranking'],['avisos','Avisos'],['mercado','Mercado'],['estudios','Estúdios']];
 
 let G = {};          // slug -> jogo (aprovados + os meus envios + todos, se admin)
 let byDb = {};       // id do banco -> jogo
@@ -27,7 +32,7 @@ let reviews = {};    // slug -> [{stars, comment}]
 let user = null, isAdmin = false, nick = '';
 let loading = true, loadError = '', query = '';
 
-function fresh(){ return {view:'catalogo', page:null, active:null, filter:'todos', sessions:[], library:[], stats:{answered:0, maxTabs:0, multi:false}}; }
+function fresh(){ return {view:'catalogo', page:null, active:null, filter:'todos', sessions:[], library:[], favs:[], authMode:'criar', stats:{answered:0, maxTabs:0, multi:false}}; }
 function loadLocal(){
   try{ const d = JSON.parse(localStorage.getItem(KEY)); if(d && Array.isArray(d.sessions)) return Object.assign(fresh(), d); }catch(e){}
   return fresh();
@@ -136,43 +141,97 @@ function renderNav(){
   const due = state.sessions.filter(s => s.due).length;
   $('#nav').innerHTML = NAV.map(([v,t]) =>
     `<button data-act="nav" data-v="${v}" ${!state.active && state.view === v ? 'aria-current="page"' : ''}>${ICON[v]}<span>${t}</span>${v === 'avisos' && due ? `<span class="badge">${due}</span>` : ''}</button>`).join('');
+  const nome = user ? (nick || user.email.split('@')[0]) : '';
+  $('#account').innerHTML = user
+    ? `<button class="acct" data-act="nav" data-v="perfil"><span class="avatar">${esc(nome[0].toUpperCase())}</span><span class="acct-name">${esc(nome)}</span></button>`
+    : `<button class="btn primary" data-act="auth" data-mode="criar">Criar conta</button><button class="btn" data-act="auth" data-mode="entrar">Entrar</button>`;
+  $('#topright').innerHTML = `<button class="icon-btn" data-act="nav" data-v="avisos" aria-label="Avisos">${ICON.avisos}${due ? `<span class="badge">${due}</span>` : ''}</button>` +
+    (user ? `<button class="avatar only-phone" data-act="nav" data-v="perfil" aria-label="Perfil" style="border:0">${esc(nome[0].toUpperCase())}</button>`
+          : `<button class="btn primary only-phone" data-act="auth" data-mode="criar">Criar conta</button>`);
 }
 function renderTabs(){
   const tabs = state.sessions.map(s => {
-    const g = G[s.game];
-    return `<button class="tab${s.due ? ' due' : ''}" role="tab" aria-selected="${state.active === s.id}" data-act="focus" data-s="${esc(s.id)}">
-      <i class="dot" style="--h:${Number(g.hue) || 0}"></i><span>${esc(label(s))}</span>${s.alarmAt ? `<span class="tab-time" data-count="${esc(s.id)}"></span>` : ''}</button>`;
+    return `<span class="tab${s.due ? ' due' : ''}" aria-selected="${state.active === s.id}">
+      <button class="tab-main" data-act="focus" data-s="${esc(s.id)}"><i class="dot"></i><span>${esc(label(s))}</span>${s.alarmAt ? `<span class="tab-time" data-count="${esc(s.id)}"></span>` : ''}</button>
+      <button class="tab-x" data-act="close" data-s="${esc(s.id)}" aria-label="Fechar ${esc(label(s))}">&times;</button></span>`;
   }).join('');
-  $('#tabs').innerHTML = `<span class="mini" aria-hidden="true"><i class="globe"></i></span>` +
-    (tabs || `<span class="tabs-empty">Nenhum jogo aberto.</span>`) +
+  $('#tabs').innerHTML = `<button class="tab home" aria-selected="${!state.active}" data-act="nav" data-v="catalogo">${ICON.catalogo}<span>Catálogo</span></button>` + tabs +
     `<button class="tab add" data-act="nav" data-v="catalogo" aria-label="Abrir outro jogo">+</button>`;
+}
+function cardsHTML(list, vazio){
+  if(!list.length) return `<div class="empty">${vazio}</div>`;
+  return `<div class="grid">` + list.map(g => {
+    const open = state.sessions.some(s => s.game === g.id), rk = rank[g.dbId], fav = state.favs.includes(g.id);
+    const sub = (g.tags.length >= 2 ? [GNAME[g.group]].concat(g.tags.slice(0, 2)).join(' • ') : g.desc) + (rk ? ' • ★ ' + fmtMedia(rk.media) : '') + (g.embed === false ? ' • Abre em outra aba' : '');
+    return `<article class="card">
+      <div class="card-art" style="--h:${Number(g.hue) || 0}" aria-hidden="true">${esc(mono(g))}${open ? '<span class="pill"><i></i>Em execução</span>' : ''}</div>
+      <div class="card-body"><h3>${esc(g.name)}</h3><p class="card-sub" title="${esc(g.desc)}">${esc(sub)}</p>
+        <div class="card-actions">
+          <button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Continuar' : 'Jogar'}</button>
+          <button class="icon-btn" data-act="page" data-g="${esc(g.id)}" aria-label="Sobre ${esc(g.name)}">${ICON.info}</button>
+          <button class="icon-btn heart${fav ? ' on' : ''}" data-act="fav" data-g="${esc(g.id)}" aria-label="${fav ? 'Tirar dos favoritos' : 'Favoritar'}" aria-pressed="${fav}">${ICON.heart}</button>
+        </div></div>
+    </article>`;
+  }).join('') + `</div>`;
 }
 function gridHTML(){
   const q = query.trim().toLowerCase();
   const list = catalog().filter(g => (state.filter === 'todos' || g.group === state.filter) &&
     (!q || (g.name + ' ' + g.desc + ' ' + g.tags.join(' ')).toLowerCase().includes(q)));
-  if(!list.length) return `<div class="empty">Nenhum jogo com esse nome. Tente outro termo.</div>`;
-  return `<div class="grid">` + list.map(g => {
-    const open = state.sessions.filter(s => s.game === g.id).length, rk = rank[g.dbId];
-    return `<article class="card">
-      <div class="card-top">${cover(g)}<h3>${esc(g.name)}</h3></div>
-      <p>${esc(g.desc)}</p>
-      <div class="tags"><span class="tag cat">${GNAME[g.group]}</span>${rk ? `<span class="tag cat">★ ${fmtMedia(rk.media)}</span>` : ''}${g.embed === false ? '<span class="tag">Abre em outra aba</span>' : ''}${g.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}${open ? `<span class="tag on">${open} aberta${open > 1 ? 's' : ''}</span>` : ''}</div>
-      <div class="row">
-        <button class="btn primary" data-act="open" data-g="${esc(g.id)}">${open ? 'Ir pra aba' : 'Abrir'}</button>
-        <button class="btn" data-act="page" data-g="${esc(g.id)}">Ver página</button>
-      </div>
-    </article>`;
-  }).join('') + `</div>`;
+  return cardsHTML(list, 'Nenhum jogo com esse nome. Tente outro termo.');
 }
+const cats = () => GROUPS.map(([k,t]) => `<button data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${k === 'incremental' ? 'Clickers' : t}</button>`).join('');
 const chips = () => GROUPS.map(([k,t]) => `<button class="chip" data-act="filter" data-f="${k}" aria-pressed="${state.filter === k}">${t}</button>`).join('');
+function featured(){
+  const list = catalog(); if(!list.length) return null;
+  const ranked = list.filter(g => rank[g.dbId]).sort((a,b) => rank[b.dbId].media - rank[a.dbId].media || rank[b.dbId].votos - rank[a.dbId].votos);
+  return ranked[0] || list.find(g => g.embed === true) || list[0];
+}
 function viewCatalogo(){
+  const f = featured(), n = state.sessions.length;
+  const fOpen = f && state.sessions.some(s => s.game === f.id);
   return `<div class="wrap">
-    <div class="head"><h1>Todos os seus idle num lugar só.</h1>
-      <p class="muted">Abra vários jogos em abas, receba aviso quando for hora de voltar e avalie os que você joga.</p></div>
-    <div class="row">${chips()}
-      <input class="search" id="busca" type="search" placeholder="Buscar jogo" aria-label="Buscar jogo" value="${esc(query)}"></div>
+    <div class="head"><span class="label">Catálogo</span><h1>Encontre seu próximo idle.</h1></div>
+    <div class="hero-row">
+      ${f ? `<section class="hero" style="--h:${Number(f.hue) || 0}">
+        <div class="hero-art" aria-hidden="true">${esc(mono(f))}</div>
+        <div class="hero-text"><span class="label">Em destaque</span><h2 class="hero-title">${esc(f.name)}</h2><p>${esc(f.desc)}</p>
+          <div class="row"><button class="btn primary big" data-act="open" data-g="${esc(f.id)}">${fOpen ? 'Continuar' : 'Jogar agora'}</button></div></div>
+      </section>` : ''}
+      <aside class="running"><span class="label">${ICON.playc}Em execução</span>
+        ${n ? state.sessions.slice(0, 4).map(s => `<div class="run-item">${cover(G[s.game])}
+          <div class="grow"><b>${esc(label(s))}</b><span class="run-state${s.due ? ' due' : ''}"><i></i>${s.due ? 'Hora de voltar' : 'Em execução'}${s.alarmAt && !s.due ? ` · <span class="num" data-count="${esc(s.id)}"></span>` : ''}</span></div>
+          <button class="play" data-act="focus" data-s="${esc(s.id)}" aria-label="Ir pra ${esc(label(s))}">${ICON.play}</button></div>`).join('')
+          : `<p class="muted">Nenhum jogo aberto ainda. Escolha um no catálogo e ele continua rodando aqui enquanto você abre outros.</p>`}
+        <p class="foot">${n} jogo${n === 1 ? '' : 's'} aberto${n === 1 ? '' : 's'}</p>
+      </aside>
+    </div>
+    <div class="catbar"><div class="cats">${cats()}</div>
+      <input class="search" id="busca" type="search" placeholder="Buscar jogo..." aria-label="Buscar jogo" value="${esc(query)}"></div>
     <div id="grid">${gridHTML()}</div>
+  </div>`;
+}
+function viewBiblioteca(){
+  const favs = catalog().filter(g => state.favs.includes(g.id));
+  const lib = catalog().filter(g => state.library.includes(g.id) && !state.favs.includes(g.id));
+  return `<div class="wrap">
+    <div class="head"><span class="label">Biblioteca</span><h1>Seus jogos.</h1></div>
+    <h2>Favoritos</h2>${cardsHTML(favs, 'Nenhum favorito ainda. Toque no coração de um jogo pra guardar aqui.')}
+    <h2>Já abertos</h2>${cardsHTML(lib, 'Os jogos que você abrir pelo World Idle aparecem aqui.')}
+  </div>`;
+}
+function viewConta(){
+  const m = state.authMode === 'entrar' ? 'entrar' : 'criar';
+  return `<div class="wrap narrow">
+    <div class="head"><h1>${m === 'criar' ? 'Crie sua conta' : 'Entre na sua conta'}</h1>
+      <p class="muted">Com a conta você salva suas abas e avisos, avalia os jogos e envia o seu. É grátis.</p></div>
+    <div class="seg"><button class="chip" data-act="auth" data-mode="criar" aria-pressed="${m === 'criar'}">Criar conta</button>
+      <button class="chip" data-act="auth" data-mode="entrar" aria-pressed="${m === 'entrar'}">Já tenho conta</button></div>
+    <form class="auth" data-form="login" data-mode="${m}">
+      <div class="f"><label class="label" for="auth-email">E-mail</label><input id="auth-email" type="email" autocomplete="email" required></div>
+      <div class="f"><label class="label" for="auth-senha">Senha${m === 'criar' ? ' (mínimo 6 caracteres)' : ''}</label><input id="auth-senha" type="password" autocomplete="${m === 'criar' ? 'new-password' : 'current-password'}" minlength="6" required></div>
+      <button class="btn primary big">${m === 'criar' ? 'Criar conta' : 'Entrar'}</button>
+    </form>
   </div>`;
 }
 function alarmRow(s){
@@ -217,21 +276,15 @@ function viewAvisos(){
       : `<div class="empty">Nenhum jogo aberto. Abra um no catálogo pra definir um aviso.</div>`}
   </div>`;
 }
-function authForm(){
-  return `<form class="auth" data-form="login">
-      <div class="f"><label class="label" for="auth-email">E-mail</label><input id="auth-email" type="email" autocomplete="email" required></div>
-      <div class="f"><label class="label" for="auth-senha">Senha</label><input id="auth-senha" type="password" autocomplete="current-password" minlength="6" required></div>
-      <div class="row"><button class="btn primary" data-mode="entrar">Entrar</button><button class="btn" data-mode="criar">Criar conta</button></div>
-    </form>`;
-}
 function viewPerfil(){
+  if(!user) return viewConta();
   const got = ACH.filter(a => a.ok()).length;
   return `<div class="wrap">
     <div class="head"><h1>Perfil</h1><p class="muted">${user ? 'Suas abas, avisos e notas ficam salvos na sua conta.' : 'Entre pra salvar suas abas e avisos na conta, avaliar jogos e enviar o seu.'}</p></div>
-    ${user ? `<div class="field"><span class="label">Conta</span><b>${esc(user.email)}</b></div>
+    ${`<div class="field"><span class="label">Conta</span><b>${esc(user.email)}</b></div>
       <div class="field"><label class="label" for="nick">Apelido</label>
         <input id="nick" type="text" maxlength="24" placeholder="Como te chamam nos jogos" value="${esc(nick)}"></div>
-      <div class="row"><button class="btn" data-act="logout">Sair da conta</button></div>` : authForm()}
+      <div class="row"><button class="btn" data-act="logout">Sair da conta</button></div>`}
     <div class="stats">
       <div class="stat"><span class="num">${state.library.length}</span><span class="muted">jogos na biblioteca</span></div>
       <div class="stat"><span class="num">${state.sessions.length}</span><span class="muted">abas abertas</span></div>
@@ -333,7 +386,7 @@ function viewEstudios(){
       <div class="f"><label class="label" for="env-contato">Contato</label><input id="env-contato" maxlength="60" placeholder="E-mail ou Discord"></div>
       <label class="check wide"><input id="env-mercado" type="checkbox"> O jogo tem mercado entre jogadores</label>
       <div class="wide"><button class="btn primary">Enviar pra análise</button></div>
-    </form>` : `<div class="empty">Entre na sua conta pra enviar um jogo. <button class="btn" data-act="nav" data-v="perfil">Entrar</button></div>`}
+    </form>` : `<div class="empty">Crie sua conta ou entre pra enviar um jogo. <button class="btn primary" data-act="auth" data-mode="criar">Criar conta</button></div>`}
     ${user ? `<h2>Meus envios</h2>
     ${meus.length ? `<div class="list">` + meus.map(c => `<div class="item">${cover(c)}
         <div class="grow"><b>${esc(c.name)}</b><span class="muted">${GNAME[c.group]} · ${limit(c)} conta${limit(c) > 1 ? 's' : ''} por jogador</span></div>
@@ -384,7 +437,7 @@ function render(){
   const s = state.active && sess(state.active);
   if(!s) state.active = null;
   renderNav(); renderTabs(); syncFrames();
-  const views = {catalogo:viewCatalogo, avisos:viewAvisos, perfil:viewPerfil, mercado:viewMercado, estudios:viewEstudios, jogo:viewJogo, analise:viewAnalise, ranking:viewRanking};
+  const views = {biblioteca:viewBiblioteca, conta:viewConta, catalogo:viewCatalogo, avisos:viewAvisos, perfil:viewPerfil, mercado:viewMercado, estudios:viewEstudios, jogo:viewJogo, analise:viewAnalise, ranking:viewRanking};
   let html;
   if(loading) html = `<div class="wrap"><div class="empty">Carregando jogos…</div></div>`;
   else if(loadError) html = `<div class="wrap"><div class="empty">${esc(loadError)}</div></div>`;
@@ -432,7 +485,7 @@ function setAlarm(s, min){
   toast('Aviso definido: ' + label(s) + ' em ' + fmt(min * 60000) + '.');
 }
 async function rate(slug, n){
-  if(!user){ toast('Entre na sua conta pra avaliar.'); state.view = 'perfil'; state.active = null; render(); return; }
+  if(!user){ toast('Crie sua conta ou entre pra avaliar.'); state.authMode = 'criar'; state.view = 'conta'; state.active = null; render(); return; }
   const g = G[slug], cur = myRatings[slug]; if(!g) return;
   let error;
   if(cur){
@@ -461,7 +514,9 @@ document.addEventListener('click', e => {
   else if(a === 'open'){ openSession(el.dataset.g, false); }
   else if(a === 'newacc'){ openSession(el.dataset.g, true); }
   else if(a === 'page'){ state.view = 'jogo'; state.page = el.dataset.g; state.active = null; loadReviews(el.dataset.g); }
-  else if(a === 'close' && s){ dropSession(s); state.sessions = state.sessions.filter(x => x !== s); state.active = null; state.view = 'catalogo'; }
+  else if(a === 'close' && s){ dropSession(s); state.sessions = state.sessions.filter(x => x !== s); if(state.active === s.id){ state.active = null; state.view = 'catalogo'; } }
+  else if(a === 'auth'){ state.authMode = el.dataset.mode; state.view = user ? 'perfil' : 'conta'; state.active = null; }
+  else if(a === 'fav'){ const g = el.dataset.g; state.favs = state.favs.includes(g) ? state.favs.filter(x => x !== g) : state.favs.concat(g); }
   else if(a === 'played' && s){ visit(s); }
   else if(a === 'alarm' && s){ setAlarm(s, Number(el.dataset.m)); }
   else if(a === 'clear' && s){ s.alarmAt = 0; s.alarmSet = 0; s.due = false; pushSession(s); }
@@ -483,7 +538,7 @@ document.addEventListener('submit', async e => {
     setAlarm(s, min); save(); render();
   }else if(kind === 'login'){
     const email = $('#auth-email').value.trim(), password = $('#auth-senha').value;
-    const mode = e.submitter && e.submitter.dataset.mode;
+    const mode = f.dataset.mode;
     if(mode === 'criar'){
       const {data, error} = await sb.auth.signUp({email, password, options:{emailRedirectTo: location.origin + location.pathname}});
       if(error){ toast('Não consegui criar a conta: ' + error.message); return; }
@@ -491,7 +546,7 @@ document.addEventListener('submit', async e => {
     }else{
       const {error} = await sb.auth.signInWithPassword({email, password});
       if(error){ toast(/confirm/i.test(error.message) ? 'Confirme seu e-mail pelo link que enviamos antes de entrar.' : 'E-mail ou senha incorretos.'); return; }
-      toast('Você entrou.');
+      toast('Você entrou.'); state.view = 'catalogo'; save();
     }
   }else if(kind === 'envio'){
     if(!user){ toast('Entre na sua conta pra enviar um jogo.'); return; }

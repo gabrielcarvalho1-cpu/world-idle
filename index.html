@@ -6,25 +6,31 @@
 <title>World Idle</title>
 <meta name="description" content="Todos os seus jogos idle num lugar só: abra vários ao mesmo tempo, receba aviso de retorno, avalie e descubra novos.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
-<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>[hidden]{display:none!important}img{max-width:100%}</style>
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div class="app">
   <aside class="rail">
-    <div class="brand"><i class="globe"></i>WORLD IDLE</div>
+    <div class="brand">
+      <svg viewBox="0 0 78 44" aria-hidden="true"><path d="M3 4h12l9 24 8-17h14l8 17 9-24h12L56 42H46l-7-15-7 15H22L3 4z" fill="#eaf2ff"/></svg>
+      WORLD IDLE
+    </div>
     <nav class="nav" id="nav" aria-label="Seções"></nav>
-    <p class="rail-foot">World Idle · versão 1</p>
+    <div class="account" id="account"></div>
   </aside>
   <div class="main">
-    <div class="tabs" id="tabs" role="tablist" aria-label="Jogos abertos"></div>
+    <div class="topbar">
+      <div class="tabs" id="tabs" aria-label="Jogos abertos"></div>
+      <div class="topright" id="topright"></div>
+    </div>
     <main class="view" id="view"></main>
     <div id="frames"></div>
   </div>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
