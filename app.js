@@ -76,7 +76,7 @@ const slugify = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().re
 function mapGame(r){
   return {id:r.slug, dbId:r.id, name:r.name, url:r.url, group:r.category, hue:r.hue, tags:r.tags || [], desc:r.short_desc, long:r.long_desc,
     maxAcc:r.max_accounts, market:r.has_market, studio:r.studio, embed:r.embed_ok, status:r.status, mine: !!user && r.owner_id === user.id,
-    cover:r.cover_path, images:r.images || [], video:r.video_url, test:r.is_test, owner:r.owner_id};
+    cover:r.cover_path, images:r.images || [], video:r.video_url, videoFile:r.video_path, test:r.is_test, owner:r.owner_id};
 }
 async function loadGames(){
   const {data, error} = await sb.from('games').select('*').order('id');
@@ -362,8 +362,9 @@ function viewJogo(){
 }
 function gallery(g){
   const vid = ytId(g.video), imgs = [g.cover].concat(g.images).map(mediaUrl).filter(Boolean);
-  if(!vid && !imgs.length) return '';
-  return `<div class="gallery">${vid ? `<iframe class="shot" src="https://www.youtube-nocookie.com/embed/${vid}" title="Vídeo de ${esc(g.name)}" allow="fullscreen; picture-in-picture" loading="lazy"></iframe>` : ''}${imgs.map((u,i) => `<img class="shot" src="${u}" alt="Imagem ${i + 1} de ${esc(g.name)}" loading="lazy">`).join('')}</div>`;
+  const arq = mediaUrl(g.videoFile);
+  if(!vid && !arq && !imgs.length) return '';
+  return `<div class="gallery">${arq ? `<video class="shot" controls preload="metadata" src="${arq}"${imgs[0] ? ` poster="${imgs[0]}"` : ''}></video>` : ''}${vid ? `<iframe class="shot" src="https://www.youtube-nocookie.com/embed/${vid}" title="Vídeo de ${esc(g.name)}" allow="fullscreen; picture-in-picture" loading="lazy"></iframe>` : ''}${imgs.map((u,i) => `<img class="shot" src="${u}" alt="Imagem ${i + 1} de ${esc(g.name)}" loading="lazy">`).join('')}</div>`;
 }
 function ownerBlock(g){
   if(g.mine || isAdmin) return `<div class="note2"><span>${g.mine ? 'Você é o dono desta página.' : 'Você pode editar esta página como administrador.'}</span><button class="btn primary" data-act="edit" data-g="${esc(g.id)}">Editar página</button></div>`;
@@ -387,7 +388,9 @@ function viewEditar(){
       <div class="f wide"><label class="label" for="ed-longa">Descrição completa</label><textarea id="ed-longa" rows="5" maxlength="1200">${esc(g.long)}</textarea></div>
       <div class="f"><label class="label" for="ed-contas">Contas por jogador</label><input id="ed-contas" type="number" min="1" max="20" value="${g.maxAcc || ''}" placeholder="Quantas o jogo permite"></div>
       <div class="f"><label class="label" for="ed-estudio">Estúdio</label><input id="ed-estudio" maxlength="40" value="${esc(g.studio)}"></div>
-      <div class="f wide"><label class="label" for="ed-video">Vídeo do YouTube</label><input id="ed-video" type="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(g.video || '')}"></div>
+      <div class="f wide"><label class="label" for="ed-videoarq">Vídeo do jogo (MP4 ou WebM, até 25 MB)</label><input id="ed-videoarq" type="file" accept="video/mp4,video/webm">
+        <span class="muted">${g.videoFile ? 'Já tem vídeo enviado. Envie outro pra trocar.' : 'Um trailer curto, de uns 30 a 60 segundos.'}</span></div>
+      <div class="f wide"><label class="label" for="ed-video">Ou link de um vídeo do YouTube</label><input id="ed-video" type="url" placeholder="https://www.youtube.com/watch?v=..." value="${esc(g.video || '')}"></div>
       <div class="f"><label class="label" for="ed-capa">Capa (16:9, até 3 MB)</label><input id="ed-capa" type="file" accept="image/png,image/jpeg,image/webp">
         <span class="muted">${g.cover ? 'Já tem capa. Envie outra pra trocar.' : 'Ainda sem capa.'}</span></div>
       <div class="f"><label class="label" for="ed-imagens">Imagens do jogo (até 8)</label><input id="ed-imagens" type="file" accept="image/png,image/jpeg,image/webp" multiple>
@@ -594,10 +597,12 @@ async function decideClaim(id, ok){
   toast(ok ? 'Dono confirmado. Ele já pode editar a página.' : 'Pedido recusado.');
   await refreshAll();
 }
-const EXT = {'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp'};
+const EXT = {'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp', 'video/mp4':'mp4', 'video/webm':'webm'};
 async function uploadImg(g, file, nome){
-  if(!EXT[file.type]) throw new Error('Use imagens JPG, PNG ou WebP.');
-  if(file.size > 3 * 1024 * 1024) throw new Error('Cada imagem pode ter até 3 MB.');
+  const video = file.type.startsWith('video/');
+  if(!EXT[file.type] || video !== (nome === 'video')) throw new Error(nome === 'video' ? 'Use vídeo MP4 ou WebM.' : 'Use imagens JPG, PNG ou WebP.');
+  if(video && file.size > 25 * 1024 * 1024) throw new Error('O vídeo pode ter até 25 MB.');
+  if(!video && file.size > 3 * 1024 * 1024) throw new Error('Cada imagem pode ter até 3 MB.');
   const path = `${g.dbId}/${nome}-${Date.now()}.${EXT[file.type]}`;
   const {error} = await sb.storage.from('media').upload(path, file, {contentType:file.type, cacheControl:'3600'});
   if(error) throw new Error(error.message);
@@ -662,6 +667,8 @@ document.addEventListener('submit', async e => {
       const capa = f.querySelector('#ed-capa').files[0], imgs = [...f.querySelector('#ed-imagens').files];
       if(imgs.length > 8) throw new Error('Envie no máximo 8 imagens.');
       if(capa) patch.cover_path = await uploadImg(g, capa, 'capa');
+      const varq = f.querySelector('#ed-videoarq').files[0];
+      if(varq){ btn.textContent = 'Enviando vídeo…'; patch.video_path = await uploadImg(g, varq, 'video'); }
       if(imgs.length){ patch.images = []; let i = 0; for(const im of imgs) patch.images.push(await uploadImg(g, im, 'img' + (++i))); }
       const {error} = await sb.from('games').update(patch).eq('id', g.dbId);
       if(error) throw new Error(error.message);
